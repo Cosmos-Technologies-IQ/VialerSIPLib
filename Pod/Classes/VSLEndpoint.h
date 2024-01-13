@@ -70,6 +70,11 @@ typedef NS_ENUM(NSInteger, VSLEndpointState) {
 @property (nonatomic) VSLEndpointState state;
 
 /**
+ *  Current state of the teardown.  // default value is true
+ */
+@property (readwrite) BOOL isReadyToTearDown;
+
+/**
  *  The pool associated with the endpoint.
  */
 @property (readonly) pj_pool_t * _Nullable pjPool;
@@ -163,4 +168,9 @@ typedef NS_ENUM(NSInteger, VSLEndpointState) {
  *  @param codecConfiguration VSLCodecConfiguration Instance of an VSLCodecConfiguration
  */
 - (BOOL)updateCodecConfiguration:(VSLCodecConfiguration * _Nonnull)codecConfiguration;
+
+
+//- (void)rejectCall:(int)call_id;
+
+
 @end

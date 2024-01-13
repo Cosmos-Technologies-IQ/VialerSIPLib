@@ -58,7 +58,7 @@ NSString * const VSLAudioControllerAudioResumed = @"VSLAudioControllerAudioResum
     NSError *audioSessionCategoryError;
     [[AVAudioSession sharedInstance] setCategory:AVAudioSessionCategoryPlayAndRecord error:&audioSessionCategoryError];
     VSLLogVerbose(@"Setting AVAudioSessionCategory to \"Play and Record\"");
-
+    
     if (audioSessionCategoryError) {
         VSLLogError(@"Error setting the correct AVAudioSession category");
     }
@@ -106,15 +106,26 @@ NSString * const VSLAudioControllerAudioResumed = @"VSLAudioControllerAudioResum
                                                    object:nil];
     }
 }
-
+ 
 - (void)deactivateSoundDevice {
     VSLLogDebug(@"Deactivating audiosession");
     [self checkCurrentThreadIsRegisteredWithPJSUA];
-    pjsua_set_no_snd_dev();
-
+    
+    @try {
+        
+        if ([[VialerSIPLib sharedInstance] endpointAvailable]){
+            pjsua_set_no_snd_dev();
+            VSLLogDebug(@"pjsua_set_no_snd_dev completed");
+        }
+    }
+    @catch(id anException) {
+        VSLLogDebug(@"***  pjsua_set_no_snd_dev crash");
+    }
+    
 }
 
 - (void)deactivateAudioSession {
+    VSLLogDebug(@"Deactivating deactivateSoundDevice");
     [self deactivateSoundDevice];
     [[NSNotificationCenter defaultCenter] removeObserver:self
                                                     name:AVAudioSessionInterruptionNotification
@@ -130,6 +141,7 @@ NSString * const VSLAudioControllerAudioResumed = @"VSLAudioControllerAudioResum
  *  @param notification The notification which lead to this function being invoked over GCD.
  */
 - (void)audioInterruption:(NSNotification *)notification {
+    VSLLogDebug(@"audioInterruption");
     NSInteger avInteruptionType = [[notification.userInfo valueForKey:AVAudioSessionInterruptionTypeKey] intValue];
     if (avInteruptionType == AVAudioSessionInterruptionTypeBegan) {
         [self deactivateSoundDevice];

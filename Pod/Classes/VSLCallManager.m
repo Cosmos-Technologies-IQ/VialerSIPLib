@@ -71,6 +71,7 @@
 
             CXHandle *numberHandle = [[CXHandle alloc] initWithType:CXHandleTypePhoneNumber value:call.numberToCall];
             CXAction *startCallAction = [[CXStartCallAction alloc] initWithCallUUID:call.uuid handle:numberHandle];
+            
 
             [self requestCallKitAction:startCallAction completion:^(NSError *error) {
                 if (error) {
@@ -106,7 +107,15 @@
     VSLLogInfo(@"\"Mute Call Transaction\" requested succesfully for Call(%@)", call.uuid.UUIDString);
 }
 
+- (void)mergeCalls:(VSLCall *)call SecondCall: (VSLCall *)secondcall completion: (void (^)(NSError *error))completionHandler {
+    NSLog(@"MergeCalls Triggered");
+    CXAction *mergeCallsAction = [[CXSetGroupCallAction alloc] initWithCallUUID:call.uuid callUUIDToGroupWith:secondcall.uuid];
+    [self requestCallKitAction:mergeCallsAction completion:completionHandler];
+    VSLLogInfo(@"\"Merge Call Transaction\" requested succesfully for Call(%@), to Call (%@)", call.uuid.UUIDString, secondcall.uuid.UUIDString);
+}
+
 - (void)toggleHoldForCall:(VSLCall *)call completion:(void (^)(NSError * _Nullable))completion {
+    NSLog(@"Toggle Hold for Call CXAction Called");
     CXAction *toggleHoldAction = [[CXSetHeldCallAction alloc] initWithCallUUID:call.uuid onHold:!call.onHold];
     [self requestCallKitAction:toggleHoldAction completion:completion];
     VSLLogInfo(@"\"Hold Call Transaction\" requested succesfully for Call(%@)", call.uuid.UUIDString);
@@ -120,6 +129,7 @@
 
 - (void)requestCallKitAction:(CXAction *)action completion:(void (^)(NSError *error))completion {
     CXTransaction *transaction = [[CXTransaction alloc] initWithAction:action];
+    
     [self.callController requestTransaction:transaction completion:^(NSError * _Nullable error) {
         if (error) {
             VSLLogError(@"Error requesting transaction: %@. Error:%@", transaction, error);
@@ -188,7 +198,11 @@
         }
         return NO;
     }];
+    
 
+    
+    NSLog(@" call count %lu",(unsigned long)self.calls.count);
+    
     if (callIndex != NSNotFound) {
         VSLCall *call = [self.calls objectAtIndex:callIndex];
         VSLLogDebug(@"VSLCall found for UUID:%@ VSLCall:%@", uuid.UUIDString, call);

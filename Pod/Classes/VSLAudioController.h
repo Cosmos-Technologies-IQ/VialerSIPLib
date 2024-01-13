@@ -35,6 +35,7 @@ typedef NS_ENUM(NSInteger, VSLAudioControllerOutputs) {
  */
 @property (readonly, nonatomic) BOOL hasBluetooth;
 
+
 /**
  *  The current routing of the audio.
  *

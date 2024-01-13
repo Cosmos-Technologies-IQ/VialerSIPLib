@@ -17,7 +17,8 @@
 #import "VSLEndpointConfiguration.h"
 #import "VSLLogging.h"
 
-static NSUInteger const VSLAccountRegistrationTimeoutInSeconds = 800;
+//Sip expiry time
+static NSUInteger const VSLAccountRegistrationTimeoutInSeconds = 600;
 static NSString * const VSLAccountErrorDomain = @"VialerSIPLib.VSLAccount";
 
 @interface VSLAccount()
@@ -27,6 +28,7 @@ static NSString * const VSLAccountErrorDomain = @"VialerSIPLib.VSLAccount";
 @property (copy, nonatomic) RegistrationCompletionBlock registrationCompletionBlock;
 @property (assign) BOOL shouldReregister;
 @property (assign) BOOL registrationInProgress;
+@property (nonatomic, assign) NSString* apnsToken;
 @end
 
 @implementation VSLAccount
@@ -54,6 +56,10 @@ static NSString * const VSLAccountErrorDomain = @"VialerSIPLib.VSLAccount";
                     (long)_accountState, VSLAccountStateString(accountState), (long)accountState);
         _accountState = accountState;
     }
+}
+
+- (void)setApnsToken:(NSString *)apnsToken{
+    _apnsToken = apnsToken;
 }
 
 - (BOOL)isAccountValid {
@@ -123,6 +129,9 @@ static NSString * const VSLAccountErrorDomain = @"VialerSIPLib.VSLAccount";
     acc_cfg.cred_info[0].data_type = PJSIP_CRED_DATA_PLAIN_PASSWD;
     acc_cfg.cred_info[0].data = accountConfiguration.sipPassword.pjString;
     acc_cfg.proxy_cnt = 0;
+    //MARK: Adding contact params here
+    // NSString *test = @"bob";
+    // acc_cfg.reg_contact_params = pj_str(";pn-provider=apns;pn-param=com.speechmobility.evateliOS;pn-prd=");
     
     // If a proxy server is present on the account configuration add this to pjsua account configuration.
     if (accountConfiguration.sipProxyServer) {
@@ -132,13 +141,16 @@ static NSString * const VSLAccountErrorDomain = @"VialerSIPLib.VSLAccount";
     
     acc_cfg.sip_stun_use = accountConfiguration.sipStunType;
     acc_cfg.media_stun_use = accountConfiguration.mediaStunType;
-    
+        
     acc_cfg.allow_via_rewrite = accountConfiguration.allowViaRewrite ? PJ_TRUE : PJ_FALSE;
     acc_cfg.allow_contact_rewrite = accountConfiguration.allowContactRewrite ? PJ_TRUE : PJ_FALSE;
     
     // Only set the contact rewrite method when allow contact rewrite is set to TRUE.
     if (accountConfiguration.allowContactRewrite) {
+        NSLog(@"contact Rewrite");
+        
         acc_cfg.contact_rewrite_method = accountConfiguration.contactRewriteMethod;
+       
     }
     
     if ([[VSLEndpoint sharedEndpoint].endpointConfiguration hasTCPConfiguration] || [[VSLEndpoint sharedEndpoint].endpointConfiguration hasTLSConfiguration]) {
@@ -164,6 +176,8 @@ static NSString * const VSLAccountErrorDomain = @"VialerSIPLib.VSLAccount";
         acc_cfg.use_srtp = PJMEDIA_SRTP_MANDATORY;
     }
     
+  
+    
     if (accountConfiguration.turnConfiguration) {
         acc_cfg.turn_cfg_use = PJSUA_TURN_CONFIG_USE_CUSTOM;
         acc_cfg.turn_cfg.enable_turn = accountConfiguration.turnConfiguration.enableTurn;
@@ -184,16 +198,17 @@ static NSString * const VSLAccountErrorDomain = @"VialerSIPLib.VSLAccount";
     [self checkCurrentThreadIsRegisteredWithPJSUA];
     
     pj_status_t status = pjsua_acc_add(&acc_cfg, PJ_TRUE, &accountId);
+
     
     if (status == PJ_SUCCESS) {
-        VSLLogInfo(@"Account added succesfully");
+        VSLLogInfo(@"SIP account added to VSLSIP");
         self.accountConfiguration = accountConfiguration;
         self.accountId = accountId;
         [[VSLEndpoint sharedEndpoint] addAccount:self];
     } else {
         if (error != NULL) {
             *error = [NSError VSLUnderlyingError:nil
-                         localizedDescriptionKey: NSLocalizedString(@"Could not configure VSLAccount", nil)
+                         localizedDescriptionKey: NSLocalizedString(@"SIP registeration error", nil)
                      localizedFailureReasonError:[NSString stringWithFormat:NSLocalizedString(@"PJSIP status code: %d", nil), status]
                                      errorDomain:VSLAccountErrorDomain
                                        errorCode:VSLAccountErrorCannotConfigureAccount];
@@ -234,12 +249,12 @@ static NSString * const VSLAccountErrorDomain = @"VialerSIPLib.VSLAccount";
     if (!self.isAccountValid) {
         VSLLogError(@"Account registration failed, invalid account!");
         NSError *error = [NSError VSLUnderlyingError:nil
-                             localizedDescriptionKey:NSLocalizedString(@"Account is invalid, invalid account!", nil)
-                         localizedFailureReasonError:NSLocalizedString(@"Account is invalid, invalid account!", nil)
+                             localizedDescriptionKey:NSLocalizedString(@"Account is invalid!", nil)
+                         localizedFailureReasonError:NSLocalizedString(@"Account is invalid!", nil)
                                          errorDomain:VSLAccountErrorDomain
                                            errorCode:VSLAccountErrorInvalidAccount];
         completion(NO, error);
-        if (self.registrationCompletionBlock) {
+        if (self.registrationCompletionBlock) { 
             self.registrationCompletionBlock = completion;
         }
         return;
@@ -248,8 +263,10 @@ static NSString * const VSLAccountErrorDomain = @"VialerSIPLib.VSLAccount";
     pjsua_acc_info info;
     pjsua_acc_get_info((pjsua_acc_id)self.accountId, &info);
     
+   // dispatch_async(dispatch_get_main_queue(), ^{
     pjsua_acc_config cfg;
     pjsua_acc_get_config((pjsua_acc_id)self.accountId, [VSLEndpoint sharedEndpoint].pjPool, &cfg);
+  //  });
     
     // If pjsua_acc_info.expires == -1 the account has a registration but, as it turns out,
     // this is not a valid check whether there is a registration in progress or not, at least,
@@ -356,7 +373,7 @@ static NSString * const VSLAccountErrorDomain = @"VialerSIPLib.VSLAccount";
         self.registrationInProgress = NO;
         // Registration is succesfull.
         if (self.registrationCompletionBlock) {
-            VSLLogVerbose(@"Account registered succesfully");
+            VSLLogVerbose(@"SIP account registered successfully");
             self.registrationCompletionBlock(YES, nil);
             self.registrationCompletionBlock = nil;
         }

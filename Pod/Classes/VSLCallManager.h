@@ -59,6 +59,12 @@
 - (void)toggleMuteForCall:(VSLCall * _Nonnull)call completion:(void (^ _Nonnull)(NSError * _Nullable error))completion;
 
 /**
+ Merge two calls
+ */
+
+- (void)mergeCalls:(VSLCall * _Nonnull)call SecondCall: (VSLCall * _Nonnull)secondcall  completion : (void (^ _Nonnull)(NSError * _Nullable error))completionHandler;
+
+/**
  *  Toggle hold of the call.
  *
  *  @param completion A completion block giving access to an NSError when the given call cannot be put on hold.

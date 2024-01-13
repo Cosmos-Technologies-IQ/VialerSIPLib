@@ -66,9 +66,9 @@ NSString * const VSLNotificationUserInfoErrorStatusMessageKey = @"VSLNotificatio
 
 - (BOOL)configureLibraryWithEndPointConfiguration:(VSLEndpointConfiguration * _Nonnull)endpointConfiguration error:(NSError * _Nullable __autoreleasing *)error {
     // Make sure interrupts are handled by pjsip
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [[UIApplication sharedApplication] beginReceivingRemoteControlEvents];
-    });    
+//    dispatch_async(dispatch_get_main_queue(), ^{
+//        [[UIApplication sharedApplication] beginReceivingRemoteControlEvents];
+//    });
 
     // Start the Endpoint
     NSError *endpointConfigurationError;
@@ -84,11 +84,18 @@ NSString * const VSLNotificationUserInfoErrorStatusMessageKey = @"VSLNotificatio
 }
 
 - (BOOL)shouldRemoveEndpoint {
-    return (self.endpointAvailable && self.accounts.count == 0);
+    if (!self.endpoint.isReadyToTearDown){
+        VSLLogInfo(@"Tear down already happened, so not triggering tear down again");
+        NSLog(@"Tear down already happened, so not triggering tear down again");
+    }
+    return (self.endpointAvailable && self.accounts.count == 0 && self.endpoint.isReadyToTearDown);
+    
 }
+
 
 - (void)removeEndpoint {
     if ([self shouldRemoveEndpoint]){
+        self.endpoint.isReadyToTearDown = NO;
         [self.endpoint destroyPJSUAInstance];
     }
 }
@@ -105,6 +112,8 @@ NSString * const VSLNotificationUserInfoErrorStatusMessageKey = @"VSLNotificatio
         accountConfiguration.sipAccount = sipUser.sipAccount;
         accountConfiguration.sipPassword = sipUser.sipPassword;
         accountConfiguration.sipDomain = sipUser.sipDomain;
+        
+        
 
         if ([sipUser respondsToSelector:@selector(sipProxy)]) {
             accountConfiguration.sipProxyServer = sipUser.sipProxy;
@@ -149,6 +158,7 @@ NSString * const VSLNotificationUserInfoErrorStatusMessageKey = @"VSLNotificatio
         account = [[VSLAccount alloc] initWithCallManager:self.callManager];
  
         NSError *accountConfigError = nil;
+        VSLLogInfo(@"Account configuration 154");
         [account configureWithAccountConfiguration:accountConfiguration error:&accountConfigError];
         if (accountConfigError && error != NULL) {
             *error = accountConfigError;

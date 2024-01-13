@@ -45,15 +45,23 @@ NSString * const CallKitProviderDelegateInboundCallRejectedNotification = @"Call
                                                       initWithLocalizedName:NSLocalizedString(appname, nil)];
     
     providerConfiguration.maximumCallGroups = 2;
-    providerConfiguration.maximumCallsPerCallGroup = 1;
-    providerConfiguration.supportsVideo = ![VSLEndpoint sharedEndpoint].endpointConfiguration.disableVideoSupport;
+    providerConfiguration.maximumCallsPerCallGroup = 2;
+    
+    //Disables Video option
+    providerConfiguration.supportsVideo = NO;
+        
+    //Added to show image Icon in callkit
+    UIImage*callkitIcon = [UIImage imageNamed:@"callKitAppIcon"];
+    providerConfiguration.iconTemplateImageData = UIImagePNGRepresentation(callkitIcon);
     
     NSString *ringtoneFileName = [[NSBundle mainBundle] pathForResource:@"ringtone" ofType:@"wav"];
     if (ringtoneFileName) {
         providerConfiguration.ringtoneSound = @"ringtone.wav";
     }
     
-    providerConfiguration.supportedHandleTypes = [NSSet setWithObject:[NSNumber numberWithInt:CXHandleTypePhoneNumber]];
+  //  providerConfiguration.supportedHandleTypes = [NSSet setWithObject:[NSNumber numberWithInt:CXHandleTypePhoneNumber],[NSNumber numberWithInt:CXHandleTypeGeneric],nil];
+    providerConfiguration.supportedHandleTypes = [NSSet setWithObjects:[NSNumber numberWithInteger:CXHandleTypeGeneric],[NSNumber numberWithInteger:CXHandleTypePhoneNumber], nil];
+
     
     return providerConfiguration;
 }
@@ -69,7 +77,7 @@ NSString * const CallKitProviderDelegateInboundCallRejectedNotification = @"Call
     if ([update.localizedCallerName length] == 0) { // Doing this to not let the caller contact name override the platform's one.
         handleValue = call.callerNumber;
     }
-    CXHandle *handle = [[CXHandle alloc] initWithType:CXHandleTypePhoneNumber value:handleValue];
+    CXHandle *handle = [[CXHandle alloc] initWithType:CXHandleTypeGeneric value:handleValue];
     update.remoteHandle = handle;
 
     VSLLogVerbose(@"Updating CallKit provider with UUID: %@", call.uuid.UUIDString);
@@ -215,6 +223,10 @@ NSString * const CallKitProviderDelegateInboundCallRejectedNotification = @"Call
     }
 }
 
+- (void)provider:(CXProvider *)provider performSetGroupCallAction:(CXSetGroupCallAction *)action{
+    NSLog(@"Set Group Call Action in CallKitProviderDelegate Triggered");
+}
+
 - (void)provider:(CXProvider *)provider didActivateAudioSession:(AVAudioSession *)audioSession {
     [self.callManager.audioController activateAudioSession];
 }
@@ -244,6 +256,7 @@ NSString * const CallKitProviderDelegateInboundCallRejectedNotification = @"Call
 
         case VSLCallStateIncoming:
             // An incoming call is reported to the provider immediately after the push message is received in the APNSHandler.
+           VSLLogDebug(@"incoming call reported after push message recieved by apns");
             break;
 
         case VSLCallStateEarly:

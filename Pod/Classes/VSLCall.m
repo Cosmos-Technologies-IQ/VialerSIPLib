@@ -13,6 +13,7 @@
 #import "VSLRingback.h"
 #import "VialerSIPLib.h"
 #import "VialerUtils.h"
+#import <VialerPJSIP/pjsua.h>
 
 
 static NSString * const VSLCallErrorDomain = @"VialerSIPLib.VSLCall";
@@ -25,6 +26,7 @@ NSString * const VSLCallDisconnectedNotification = @"VSLCallDisconnectedNotifica
 NSString * const VSLCallDeallocNotification = @"VSLCallDeallocNotification";
 NSString * const VSLCallNoAudioForCallNotification = @"VSLCallNoAudioForCallNotification";
 NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringSetupCallNotification";
+//NSString * const VSLCallHoldNotification = @"VSLCallHoldNotification";
 
 @interface VSLCall()
 @property (readwrite, nonatomic) VSLCallState callState;
@@ -34,7 +36,7 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
 @property (readwrite, nonatomic) VSLMediaState mediaState;
 @property (readwrite, nonatomic) NSString *localURI;
 @property (readwrite, nonatomic) NSString *remoteURI;
-@property (readwrite, nonatomic) NSString *callerName;
+@property (copy, readwrite) NSString *callerName;
 @property (readwrite, nonatomic) NSString *callerNumber;
 @property (readwrite, nonatomic) NSString *messageCallId;
 @property (readwrite, nonatomic) NSUUID *uuid;
@@ -46,13 +48,16 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
 @property (strong, nonatomic) NSString *currentAudioSessionCategory;
 @property (nonatomic) BOOL connected;
 @property (nonatomic) BOOL userDidHangUp;
+@property (readwrite, nonatomic) BOOL isMerged;
+@property (readwrite, nonatomic) NSInteger *mergedWithUUID;
 @property (strong, nonatomic) AVAudioPlayer *disconnectedSoundPlayer;
 @property (readwrite, nonatomic) VSLCallTransferState transferStatus;
-@property (readwrite, nonatomic) NSTimeInterval lastSeenConnectDuration;
+//@property (readwrite, nonatomic) NSTimeInterval lastSeenConnectDuration;
 @property (strong, nonatomic) NSString *numberToCall;
 @property (readwrite, nonatomic) NSTimer *audioCheckTimer;
 @property (readwrite, nonatomic) int audioCheckTimerFired;
 @property (readwrite, nonatomic) VSLCallAudioState callAudioState;
+@property (readwrite, nonatomic) VSLCallAudioState callAudioState1;
 @property (readwrite, nonatomic) int previousRxPkt;
 @property (readwrite, nonatomic) int previousTxPkt;
 /**
@@ -71,6 +76,7 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
     if (self = [super init]) {
         self.uuid = [[NSUUID alloc] init];
         self.account = account;
+        self.lastSeenConnectDuration = 0;
     }
     return self;
 }
@@ -87,7 +93,10 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
             } else {
                 self.incoming = NO;
             }
+            self.lastSeenConnectDuration = 0;
             [self updateCallInfo:callInfo];
+            NSLog(@"updatecallinfo called 91");
+
         }
     }
     VSLLogVerbose(@"Inbound call init with uuid:%@ and id:%ld", self.uuid.UUIDString, (long)self.callId);
@@ -97,13 +106,14 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
 - (instancetype)initOutboundCallWithNumberToCall:(NSString *)number account:(VSLAccount *)account {
     if (self = [self initPrivateWithAccount:account]) {
         self.numberToCall = [VialerUtils cleanPhoneNumber:number];
+        self.lastSeenConnectDuration = 0;
     }
     return self;
 }
 
 - (instancetype _Nullable)initInboundCallWithCallId:(NSUInteger)callId account:(VSLAccount * _Nonnull)account andInvite:(SipInvite *)invite {
     self.invite = invite;
-    
+    self.lastSeenConnectDuration = 0;
     return [self initInboundCallWithCallId:callId account:account];
 }
 
@@ -112,6 +122,8 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
     self.callerNumber = [VialerUtils cleanPhoneNumber:number];
     self.incoming = YES;
     self.callerName = name;
+    self.lastSeenConnectDuration = 0;
+    
     return self;
 }
 
@@ -126,14 +138,18 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
 - (void)setCallState:(VSLCallState)callState {
     if (_callState != callState) {
         NSString *stringFromCallStateProperty = NSStringFromSelector(@selector(callState));
+        VSLLogDebug(@"Call before (%@). CallState will change from %@(%ld) to %@(%ld)", self.uuid.UUIDString, VSLCallStateString(_callState),
+                    (long)_callState, VSLCallStateString(callState), (long)callState);
+        
         [self willChangeValueForKey:stringFromCallStateProperty];
-        VSLLogDebug(@"Call(%@). CallState will change from %@(%ld) to %@(%ld)", self.uuid.UUIDString, VSLCallStateString(_callState),
-                   (long)_callState, VSLCallStateString(callState), (long)callState);
+        
+        VSLLogDebug(@"Call after (%@). CallState will change from %@(%ld) to %@(%ld)", self.uuid.UUIDString, VSLCallStateString(_callState),
+                    (long)_callState, VSLCallStateString(callState), (long)callState);
         _callState = callState;
-
+        
         switch (_callState) {
             case VSLCallStateNull: {
-
+                
             } break;
             case VSLCallStateIncoming: {
                 pj_status_t status = pjsua_call_answer((pjsua_call_id)self.callId, PJSIP_SC_RINGING, NULL, NULL);
@@ -141,20 +157,20 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
                     VSLLogWarning(@"Error %d while sending status code PJSIP_SC_RINGING", status);
                 }
             } break;
-
+                
             case VSLCallStateCalling: {
-
+                
             } break;
-
+                
             case VSLCallStateEarly: {
                 if (!self.incoming) {
                     [self.ringback start];
                 }
             } break;
-
+                
             case VSLCallStateConnecting: {
             } break;
-
+                
             case VSLCallStateConfirmed: {
                 self.connected = YES;
                 if (!self.incoming) {
@@ -166,7 +182,7 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
                 [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(audioInterruption:) name:VSLAudioControllerAudioInterrupted object:nil];
                 [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(audioInterruption:) name:VSLAudioControllerAudioResumed object:nil];
             } break;
-
+                
             case VSLCallStateDisconnected: {
                 [self calculateStats];
                 if (!self.incoming) {
@@ -174,21 +190,21 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
                     [self.ringback stop];
                     self.ringback = nil;
                 }
-
+                
                 [[NSNotificationCenter defaultCenter] removeObserver:self name:VSLAudioControllerAudioResumed object:nil];
                 [[NSNotificationCenter defaultCenter] removeObserver:self name:VSLAudioControllerAudioInterrupted object:nil];
-
+                
                 if (self.connected && !self.userDidHangUp) {
                     [self.disconnectedSoundPlayer play];
                 }
             } break;
         }
         [self didChangeValueForKey:stringFromCallStateProperty];
-
+        
         NSDictionary *notificationUserInfo = @{
-                                               VSLNotificationUserInfoCallKey : self,
-                                               VSLNotificationUserInfoCallStateKey: [NSNumber numberWithInt:callState]
-                                               };
+            VSLNotificationUserInfoCallKey : self,
+            VSLNotificationUserInfoCallStateKey: [NSNumber numberWithInt:callState]
+        };
         [[NSNotificationCenter defaultCenter] postNotificationName:VSLCallStateChangedNotification
                                                             object:nil
                                                           userInfo:notificationUserInfo];
@@ -227,12 +243,13 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
 
     pjsua_call_info callInfo;
     pjsua_call_get_info((pjsua_call_id)self.callId, &callInfo);
-    NSTimeInterval latestConnecDuration = callInfo.connect_duration.sec;
+    
+    NSTimeInterval latestConnectDuration = callInfo.connect_duration.sec;
 
     // Workaround for callInfo.connect_duration being 0 at end of call
-    if (latestConnecDuration > self.lastSeenConnectDuration) {
-        self.lastSeenConnectDuration = latestConnecDuration;
-        return latestConnecDuration;
+    if (latestConnectDuration > self.lastSeenConnectDuration) {
+        self.lastSeenConnectDuration = latestConnectDuration;
+        return latestConnectDuration;
     } else {
         return self.lastSeenConnectDuration;
     }
@@ -313,6 +330,125 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
     return NO;
 }
 
+- (BOOL)unmergeToCall:(VSLCall *)secondCall {
+    
+    if (self.callState != VSLCallStateConfirmed || secondCall.callState != VSLCallStateConfirmed) {
+        return YES;
+    }
+    
+
+                pjsua_call_info callInfo;
+                pjsua_call_get_info((pjsua_call_id)self.callId, &callInfo);
+                
+                pjsua_call_info call2Info;
+                pjsua_call_get_info((pjsua_call_id)secondCall.callId, &call2Info);
+
+                pjsua_call_media_status slotOne = callInfo.media_status;
+                pjsua_call_media_status slotTwo = call2Info.media_status;
+                NSLog(@"Ports %d %d" , callInfo.conf_slot, call2Info.conf_slot);
+//
+//
+//                NSLog(@"Call Merge Status call State 1: %u", callInfo.media_status);
+//                NSLog(@"Call Merge Status call State 2: %u", call2Info.media_status);
+                
+                //Active Media status
+                if ((slotTwo == PJSUA_CALL_MEDIA_ACTIVE || slotTwo == PJSUA_CALL_MEDIA_REMOTE_HOLD) && (slotOne == PJSUA_CALL_MEDIA_ACTIVE || slotOne == PJSUA_CALL_MEDIA_REMOTE_HOLD)){
+ //                   NSLog(@"media state active or remote Hold");
+                    //If media is active Connect
+//                    pjsua_conf_disconnect(callInfo.conf_slot, 0);
+//                    pjsua_conf_disconnect(0, callInfo.conf_slot);
+                    pjsua_conf_adjust_rx_level(0, 3.0);
+                    pjsua_conf_adjust_tx_level(0, 5.0);
+                    pjsua_conf_disconnect(callInfo.conf_slot, call2Info.conf_slot);
+                    pjsua_conf_disconnect(call2Info.conf_slot, callInfo.conf_slot);
+
+                }else{
+                    return NO;
+                }
+                
+                
+        
+//      });
+    return YES;
+}
+
+
+
+
+/*
+- (BOOL)mergeToCall:(VSLCall *)secondCall {
+    
+    if (self.callState != VSLCallStateConfirmed || secondCall.callState != VSLCallStateConfirmed) {
+        return YES;
+    }
+    
+
+                pjsua_call_info callInfo;
+                pjsua_call_get_info((pjsua_call_id)self.callId, &callInfo);
+                
+                pjsua_call_info call2Info;
+                pjsua_call_get_info((pjsua_call_id)secondCall.callId, &call2Info);
+
+                pjsua_call_media_status slotOne = callInfo.media_status;
+                pjsua_call_media_status slotTwo = call2Info.media_status;
+                NSLog(@"Ports %d %d" , callInfo.conf_slot, call2Info.conf_slot);
+//
+//
+//                NSLog(@"Call Merge Status call State 1: %u", callInfo.media_status);
+//                NSLog(@"Call Merge Status call State 2: %u", call2Info.media_status);
+                
+                //Active Media status
+                if ((slotTwo == PJSUA_CALL_MEDIA_ACTIVE || slotTwo == PJSUA_CALL_MEDIA_REMOTE_HOLD) && (slotOne == PJSUA_CALL_MEDIA_ACTIVE || slotOne == PJSUA_CALL_MEDIA_REMOTE_HOLD)){
+ //                   NSLog(@"media state active or remote Hold");
+                    //If media is active Connect
+                    pjsua_conf_connect(callInfo.conf_slot, 0);
+                    pjsua_conf_connect(0, callInfo.conf_slot);
+                    pjsua_conf_adjust_rx_level(0, 3.0);
+                    pjsua_conf_adjust_tx_level(0, 5.0);
+                    pjsua_conf_connect(callInfo.conf_slot, call2Info.conf_slot);
+                    pjsua_conf_connect(call2Info.conf_slot, callInfo.conf_slot);
+                    
+                    self.isMerged = true;
+                    self.mergedWithUUID = secondCall.uuid;
+                    secondCall.isMerged = true;
+                    secondCall.mergedWithUUID = self.uuid;
+                    NSLog(@"Merge States : %u %u", self.isMerged, secondCall.isMerged);
+
+                }else{
+                    return NO;
+                }
+                
+                
+        
+//      });
+    return YES;
+}
+ 
+ */
+
+- (BOOL)mergeToCall:(VSLCall *)secondCall {
+    
+    if (self.callState != VSLCallStateConfirmed || secondCall.callState != VSLCallStateConfirmed) {
+        return YES;
+    }
+    
+                    self.isMerged = true;
+                    self.mergedWithUUID = secondCall.callId;
+                    secondCall.isMerged = true;
+                    secondCall.mergedWithUUID = self.callId;
+                    NSLog(@"Merge States : %u %u", self.isMerged, secondCall.isMerged);
+                    VSLLogInfo(@"Merge States : %u %u", self.isMerged, secondCall.isMerged);
+//
+//                }else{
+//                    return NO;
+//                }
+                
+                
+        
+//      });
+    return YES;
+}
+
 - (BOOL)transferToCall:(VSLCall *)secondCall {
     NSError *error;
     if (!self.onHold && ![self toggleHold:&error]) {
@@ -348,22 +484,24 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
     if (self.callState > VSLCallStateNull && self.callState < VSLCallStateDisconnected) {
         pjsua_call_setting callSetting;
         pjsua_call_setting_default(&callSetting);
-        
-        callSetting.flag = PJSUA_CALL_REINIT_MEDIA + PJSUA_CALL_NO_SDP_OFFER;
-                
+
+        VSLIpChangeConfiguration *ipChangeConfiguration = [VSLEndpoint sharedEndpoint].endpointConfiguration.ipChangeConfiguration;
+        if (ipChangeConfiguration) {
+            callSetting.flag = ipChangeConfiguration.ipAddressChangeReinviteFlags;
+        }
         if ([VSLEndpoint sharedEndpoint].endpointConfiguration.disableVideoSupport) {
             callSetting.vid_cnt = 0;
+            callSetting.flag &= ~PJSUA_CALL_INCLUDE_DISABLED_MEDIA;
         }
-
-        VSLLogDebug(@"Sending Reinvite.");
-        pj_status_t status = pjsua_call_reinvite2((pjsua_call_id)self.callId, &callSetting, NULL);
         
+        pj_status_t status = pjsua_call_reinvite2((pjsua_call_id)self.callId, &callSetting, NULL);
         if (status != PJ_SUCCESS) {
             char statusmsg[PJ_ERR_MSG_SIZE];
             pj_strerror(status, statusmsg, sizeof(statusmsg));
-            VSLLogError(@"REINVITE failed for call id: %ld, status: %s.", (long)self.callId, statusmsg);
-                    } else {
-            VSLLogDebug(@"REINVITE successfully sent for call id: %ld", (long)self.callId);
+
+            VSLLogError(@"Cannot REINVITE for call id: %ld, status: %s", (long)self.callId, statusmsg);
+        } else {
+            VSLLogDebug(@"REINVITE sent for call id: %ld", (long)self.callId);
         }
     } else {
         VSLLogDebug(@"Can not send call REINVITE because the call is not yet setup or already disconnected.");
@@ -401,11 +539,15 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
 #pragma mark - Callback methods
 
 - (void)updateCallInfo:(pjsua_call_info)callInfo {
+    NSLog(@"updatecallinfo func called 458");
+
     self.callState = (VSLCallState)callInfo.state;
     self.callStateText = [NSString stringWithPJString:callInfo.state_text];
     self.lastStatus = callInfo.last_status;
     self.lastStatusText = [NSString stringWithPJString:callInfo.last_status_text];
+    self.callState = _callState;
 
+   
     if (self.messageCallId == nil) {
         self.messageCallId = [NSString stringWithPJString:callInfo.call_id];
     }
@@ -428,13 +570,22 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
                 self.callerNumber = [self.invite getRemotePartyIdNumber];
             }
         }
+      //  NSLog(@"Checking State before notification trigger");
+      //  if (self.callState == VSLCallStateConfirmed && self.mediaState == VSLMediaStateActive){
+        //    NSLog(@"updatecallinfo called 488");
+            //Ping that this process is done so call merge can trigger if applicable.
+        //    [[NSNotificationCenter defaultCenter] postNotificationName:VSLCallHoldNotification
+          //                                                      object:nil];
+   //     }
     }
 }
 
 - (void)callStateChanged:(pjsua_call_info)callInfo {
     [self updateCallInfo:callInfo];
+    NSLog(@"updatecallinfo called 445");
 }
 
+/*
 - (void)mediaStateChanged:(pjsua_call_info)callInfo  {
     pjsua_call_media_status mediaState = callInfo.media_status;
     VSLLogVerbose(@"Media State Changed from %@ to %@", VSLMediaStateString(self.mediaState), VSLMediaStateString((VSLMediaState)mediaState));
@@ -450,7 +601,6 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
             pjsua_conf_connect(0, callInfo.conf_slot);
         }
     }
-
     if (self.mediaState == VSLMediaStateActive && ![self.audioCheckTimer isValid]) {
         dispatch_async(dispatch_get_main_queue(), ^{
             self.audioCheckTimerFired = 0;
@@ -459,6 +609,64 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
     }
 
     [self updateCallInfo:callInfo];
+
+}
+*/
+
+- (void)mediaStateChanged:(pjsua_call_info)callInfo  {
+    pjsua_call_media_status mediaState = callInfo.media_status;
+    VSLLogVerbose(@"Media State Changed from %@ to %@", VSLMediaStateString(self.mediaState), VSLMediaStateString((VSLMediaState)mediaState));
+    self.mediaState = (VSLMediaState)mediaState;
+
+    if (self.mediaState == VSLMediaStateActive || self.mediaState == VSLMediaStateRemoteHold) {
+        if (!self.incoming) {
+            // Stop the ringback for outgoing calls.
+            [self.ringback stop];
+        }
+        pjsua_conf_connect(callInfo.conf_slot, 0);
+        if (!self.muted) {
+            pjsua_conf_connect(0, callInfo.conf_slot);
+        }
+        if (self.isMerged && self.mergedWithUUID != nil){
+            VSLLogInfo(@"Merge Audio streams in mediaStateChanged triggered call1: %ld call2: %u", (long)self.callId, self.mergedWithUUID);
+            
+            pjsua_call_info callInfo;
+            pjsua_call_get_info((pjsua_call_id)self.callId, &callInfo);
+            
+            pjsua_call_info call2Info;
+            pjsua_call_get_info((pjsua_call_id)self.mergedWithUUID, &call2Info);
+            
+            pjsua_conf_connect(callInfo.conf_slot, call2Info.conf_slot);
+
+            pjsua_call_media_status slotOne = callInfo.media_status;
+            pjsua_call_media_status slotTwo = call2Info.media_status;
+            NSLog(@"Ports %d %d" , callInfo.conf_slot, call2Info.conf_slot);
+            //Active Media status
+            if ((slotTwo == PJSUA_CALL_MEDIA_ACTIVE || slotTwo == PJSUA_CALL_MEDIA_REMOTE_HOLD) && (slotOne == PJSUA_CALL_MEDIA_ACTIVE || slotOne == PJSUA_CALL_MEDIA_REMOTE_HOLD)){
+                pjsua_conf_connect(callInfo.conf_slot, 0);
+                pjsua_conf_connect(0, callInfo.conf_slot);
+                
+                pjsua_conf_connect(call2Info.conf_slot, 0);
+                pjsua_conf_connect(0, call2Info.conf_slot);
+                
+                pjsua_conf_adjust_rx_level(0, 3.0);
+                pjsua_conf_adjust_tx_level(0, 5.0);
+                pjsua_conf_connect(callInfo.conf_slot, call2Info.conf_slot);
+                pjsua_conf_connect(call2Info.conf_slot, callInfo.conf_slot);
+                VSLLogInfo(@"Merge Audio streams merged");
+ 
+        }
+    }
+    if (self.mediaState == VSLMediaStateActive && ![self.audioCheckTimer isValid]) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self.audioCheckTimerFired = 0;
+            self.audioCheckTimer = [NSTimer scheduledTimerWithTimeInterval:2.0 target:self selector:@selector(checkIfAudioPresent) userInfo: nil repeats: YES];
+        });
+    }
+
+    [self updateCallInfo:callInfo];
+
+    }
 }
 
 - (void)checkIfAudioPresent {
@@ -466,15 +674,29 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
     pjsua_call_get_info((pjsua_call_id)self.callId, &callInfo);
 
     if (callInfo.media_status != PJSUA_CALL_MEDIA_ACTIVE) {
-        VSLLogDebug(@"Unable to check if audio present no active stream!");
+      //  VSLLogDebug(@"Unable to check if audio present no active stream!");
+        
+        self.callAudioState1 = VSLCallAudioStateNoAudioReceiving;
+        
+        NSDictionary *notificationUserInfo = @{
+                                               VSLNotificationUserInfoCallKey : self,
+                                               VSLNotificationUserInfoCallAudioStateKey: [NSNumber numberWithInt:self.callAudioState1]
+                                               };
+        [[NSNotificationCenter defaultCenter] postNotificationName:VSLCallNoAudioForCallNotification object:notificationUserInfo];
+        
         self.audioCheckTimerFired++;
         return;
     }
 
     pj_status_t status;
     pjsua_stream_stat stream_stat;
+        
+//    if ([callInfo.media count] == 0)
+    
+    
+    
     status = pjsua_call_get_stream_stat((pjsua_call_id)self.callId, callInfo.media[0].index, &stream_stat);
-
+  
     if (status == PJ_SUCCESS) {
         int rxPkt = stream_stat.rtcp.rx.pkt;
         int txPkt = stream_stat.rtcp.tx.pkt;
@@ -488,7 +710,7 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
         } else {
             self.callAudioState = VSLCallAudioStateOK;
         }
-
+  
         self.previousRxPkt = rxPkt;
         self.previousTxPkt = txPkt;
 
@@ -513,9 +735,12 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
         if ([VSLEndpoint sharedEndpoint].endpointConfiguration.disableVideoSupport) {
             callSetting.vid_cnt = 0;
         }
-
+       
         status = pjsua_call_answer2((int)self.callId, &callSetting, PJSIP_SC_OK, NULL, NULL);
 
+        
+        NSLog(@"521 call id %ld  status %d  messageCallId %@",(long)self.callId,status,_messageCallId);
+        
         if (status != PJ_SUCCESS) {
             char statusmsg[PJ_ERR_MSG_SIZE];
             pj_strerror(status, statusmsg, sizeof(statusmsg));
@@ -637,8 +862,18 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
     return YES;
 }
 
+-(BOOL)toggleMerge:(NSError **)error{
+    if (self.isMerged){
+        _isMerged = NO;
+    }else{
+        _isMerged = YES;
+    }
+    return YES;
+}
+
 - (BOOL)toggleHold:(NSError **)error {
     if (self.callState != VSLCallStateConfirmed) {
+        NSLog(@"Returning Yes for hold state prematurely");
         return YES;
     }
     pj_status_t status;
@@ -651,14 +886,24 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
         if ([VSLEndpoint sharedEndpoint].endpointConfiguration.disableVideoSupport) {
             callSetting.vid_cnt = 0;
         }
-        
+        NSLog(@"Audio Session Reinvite issued");
         status = pjsua_call_reinvite2((pjsua_call_id)self.callId, &callSetting, NULL);
     } else {
         status = pjsua_call_set_hold((pjsua_call_id)self.callId, NULL);
     }
     
     if (status == PJ_SUCCESS) {
-        self.onHold = !self.onHold;
+        
+     //   VSLLogError(@"Error toggle holding in call %d", self.onHold);
+
+        if (self.onHold == NO){
+            _onHold = YES;
+
+        }else{
+            _onHold = NO;
+
+        }
+        
         VSLLogVerbose(self.onHold ? @"Call is on hold": @"On hold state ended");
     } else {
         char statusmsg[PJ_ERR_MSG_SIZE];
@@ -671,8 +916,10 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
                                        };
             *error = [NSError errorWithDomain:VSLCallErrorDomain code:VSLCallErrorCannotToggleHold userInfo:userInfo];
         }
+        NSLog(@"Returning No for hold state %d", _onHold);
         return NO;
     }
+    NSLog(@"Returning Yes for hold state %d", _onHold);
     return YES;
 }
 

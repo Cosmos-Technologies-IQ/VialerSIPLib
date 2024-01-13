@@ -8,6 +8,7 @@
 #import "VSLCallStats.h"
 #import <VialerPJSIP/pjsua.h>
 #import "SipInvite.h"
+#import <VialerPJSIP/pjsua.h>
 
 /**
  *  Notification which is posted when the call's state changes.
@@ -47,6 +48,13 @@ extern NSString * _Nonnull const VSLCallConnectedNotification DEPRECATED_MSG_ATT
  *  Notification that will be posted when a phonecall is disconnected locally.
  */
 extern NSString * _Nonnull const VSLCallDisconnectedNotification DEPRECATED_MSG_ATTRIBUTE("Deprecated, listen for VSLCallStateChangedNotification instead");
+
+/**
+ * Notification will be posted when hold is finished toggling
+ */
+//extern NSString * __nonnull const VSLCallHoldNotification;
+
+
 
 /**
  *  The posible errors VSLCall can return.
@@ -266,6 +274,11 @@ typedef NS_ENUM(NSInteger, VSLCallTerminateReason) {
 /**
  *  The number of the caller.
  */
+@property (readwrite, nonatomic) NSString * _Nullable updatedCallerName;
+
+/**
+ *  The number of the caller.
+ */
 @property (readonly, nonatomic) NSString * _Nullable callerNumber;
 
 /**
@@ -304,6 +317,12 @@ typedef NS_ENUM(NSInteger, VSLCallTerminateReason) {
  */
 @property (readonly) BOOL userDidHangUp;
 
+@property (readonly, nonatomic) BOOL isMerged;
+
+- (BOOL)toggleMerge:(NSError * _Nullable * _Nullable)error;
+
+@property (readonly, nonatomic) NSInteger * _Nullable mergedWithUUID;
+
 @property (readonly) BOOL connected;
 
 @property (readwrite, nonatomic) SipInvite * _Nullable invite;
@@ -314,6 +333,12 @@ typedef NS_ENUM(NSInteger, VSLCallTerminateReason) {
  *  Calculated amount of data transferred (Receiving & Transmitting).
  */
 @property (readonly, nonatomic) float totalMBsUsed;
+
+/**
+ * The last seen connect duration of the call.
+ */
+
+@property (readwrite, nonatomic) NSTimeInterval lastSeenConnectDuration;
 
 /**
  *  The connection duration of the call.
@@ -499,6 +524,16 @@ typedef NS_ENUM(NSInteger, VSLCallTerminateReason) {
  *  @return BOOL success of the call transfer.
  */
 - (BOOL)transferToCall:(VSLCall * _Nonnull)secondCall;
+
+/**
+ *  Merge  the calsl audio streams for 3-Way calling..
+ *
+ *  @param secondCall VSLCall this call should be merge in to.
+ *
+ *  @return BOOL success of the call transfer.
+ */
+- (BOOL)mergeToCall:(VSLCall * _Nonnull)secondCall;
+
 
 /**
  *  This will change the transferStatus of the call.

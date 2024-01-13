@@ -134,6 +134,8 @@ static void onTransportStateChanged(pjsip_transport *tp, pjsip_transport_state s
         // Do nothing if the endpoint is currently in the progress of starting.
         return NO;
     }
+    
+     self.isReadyToTearDown = YES;
 
     VSLLogDebug(@"Creating new PJSIP Endpoint instance.");
     self.state = VSLEndpointStarting;
@@ -208,7 +210,9 @@ static void onTransportStateChanged(pjsip_transport *tp, pjsip_transport_state s
     mediaConfig.has_ioqueue = PJ_TRUE;
     mediaConfig.thread_cnt = 1;
     mediaConfig.no_vad = PJ_TRUE;
+    mediaConfig.max_media_ports = 10;
 
+    
     // Initialize Endpoint.
     status = pjsua_init(&endpointConfig, &logConfig, &mediaConfig);
     if (status != PJ_SUCCESS) {
@@ -268,7 +272,7 @@ static void onTransportStateChanged(pjsip_transport *tp, pjsip_transport_state s
 
     pjsua_set_no_snd_dev();
 
-    VSLLogInfo(@"PJSIP Endpoint started succesfully");
+    VSLLogInfo(@"PJSIP Endpoint started successfully");
     self.endpointConfiguration = endpointConfiguration;
     self.state = VSLEndpointStarted;
 
@@ -306,38 +310,50 @@ static void onTransportStateChanged(pjsip_transport *tp, pjsip_transport_state s
 
 - (void)destroyPJSUAInstance {
     VSLLogDebug(@"PJSUA was already running destroying old instance.");
+    
     self.state = VSLEndpointClosing;
     [self stopNetworkMonitoring];
     [self.callManager endAllCalls];
-
     for (VSLAccount *account in self.accounts) {
         [self removeAccount:account];
     }
-
-    if (!pj_thread_is_registered()) {
-        pj_thread_desc aPJThreadDesc;
-        pj_thread_t *pjThread;
-        pj_status_t status = pj_thread_register("VialerPJSIP", aPJThreadDesc, &pjThread);
-
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_BACKGROUND, 2), ^{
+        
+        if (!pj_thread_is_registered()) {
+            pj_thread_desc aPJThreadDesc;
+            pj_thread_t *pjThread;
+            pj_status_t status = pj_thread_register("VialerPJSIP", aPJThreadDesc, &pjThread);
+            
+            if (status != PJ_SUCCESS) {
+                char statusmsg[PJ_ERR_MSG_SIZE];
+                pj_strerror(status, statusmsg, sizeof(statusmsg));
+                VSLLogError(@"Error registering thread at PJSUA, status: %s", statusmsg);
+            }
+        }
+        
+        
+        if (self.pjPool != NULL) {
+            pj_pool_release(self.pjPool);
+        }
+        
+        // Destroy PJSUA.
+        pj_status_t status = pjsua_destroy();
         if (status != PJ_SUCCESS) {
             char statusmsg[PJ_ERR_MSG_SIZE];
             pj_strerror(status, statusmsg, sizeof(statusmsg));
-            VSLLogError(@"Error registering thread at PJSUA, status: %s", statusmsg);
+            VSLLogWarning(@"Error stopping SIP Endpoint, status: %s", statusmsg);
         }
-    }
-
-    if (self.pjPool != NULL) {
-        pj_pool_release(self.pjPool);
-    }
+        // self.state = VSLEndpointStopped;
+         
+    });
     
-    // Destroy PJSUA.
-    pj_status_t status = pjsua_destroy();
-    if (status != PJ_SUCCESS) {
-        char statusmsg[PJ_ERR_MSG_SIZE];
-        pj_strerror(status, statusmsg, sizeof(statusmsg));
-        VSLLogWarning(@"Error stopping SIP Endpoint, status: %s", statusmsg);
-    }
-
+    //    pj_status_t status = pjsua_destroy();
+    //    if (status != PJ_SUCCESS) {
+    //        char statusmsg[PJ_ERR_MSG_SIZE];
+    //        pj_strerror(status, statusmsg, sizeof(statusmsg));
+    //        VSLLogWarning(@"Error stopping SIP Endpoint, status: %s", statusmsg);
+    //    }
+    //
     self.state = VSLEndpointStopped;
 }
 
@@ -635,6 +651,15 @@ static void onCallMediaState(pjsua_call_id call_id) {
         }
     }
 }
+    
+    
+//- (void)rejectCall:(int)call_id {
+//    VSLLogVerbose(@"PJSUA rejecting second call.");
+//
+//    pjsua_call_hangup(1, 486, nil, nil);
+//    
+//}
+
 
 /**
  * Notify application when registration or unregistration has been initiated.
@@ -732,6 +757,16 @@ static void onIncomingCall(pjsua_acc_id acc_id, pjsua_call_id call_id, pjsip_rx_
     VSLLogVerbose(@"PJSUA callback: incoming call.");
     VSLEndpoint *endpoint = [VSLEndpoint sharedEndpoint];
     VSLAccount *account = [endpoint lookupAccount:acc_id];
+
+    NSLog(@"account is %ld account state %ld account id %d",(long)account.accountId,(long)account.accountState,acc_id);
+    VSLCallManager *callManager1 = [VialerSIPLib sharedInstance].callManager;
+    NSArray *calls = [callManager1 callsForAccount:account];
+    NSLog(@"total calls %lu",(unsigned long)calls.count);
+    VSLCall *call1 = [callManager1 lastCallForAccount:account];
+    NSLog(@"call state is %@",call1.callStateText);
+    
+    
+    
     if (account) {
         VSLLogInfo(@"Detected inbound call(%d) for account:%d", call_id, acc_id); // call_id is [0..VSLEndpointConfigurationMaxCalls]
         
@@ -740,13 +775,25 @@ static void onIncomingCall(pjsua_acc_id acc_id, pjsua_call_id call_id, pjsip_rx_
         
         VSLCallManager *callManager = [VialerSIPLib sharedInstance].callManager;
         VSLCall *call = [callManager lastCallForAccount:account]; // TODO: safe to say that the last one is the right one?
-     
+        
+        NSLog(@"call status %@ ",call);
+         
+        if (call_id != 0){
+
+            VSLLogWarning(@"pjsua_call_hangup called");
+            pjsua_call_hangup(call_id, 486, NULL, NULL);
+        }else{
+            VSLLogWarning(@"769");
+            // Answer 180 to the server so it will create a tone signalling the caller that the remote side is ringing.
+            pjsua_call_answer(call_id, 180, NULL, NULL);
+        }
+        
+        // Answer 180 to the server so it will create a tone signalling the caller that the remote side is ringing.
+      //  pjsua_call_answer(call_id, 180, NULL, NULL);
+        
         if (call) {
             call.callId = call_id;
             call.invite = [[SipInvite alloc] initWithInvitePacket:rdata->pkt_info.packet];
-
-            // Answer 180 to the server so it will create a tone signalling the caller that the remote side is ringing.
-            pjsua_call_answer(call_id, 180, NULL, NULL);
             
             if ([VSLEndpoint sharedEndpoint].incomingCallBlock) {
                 [VSLEndpoint sharedEndpoint].incomingCallBlock(call);

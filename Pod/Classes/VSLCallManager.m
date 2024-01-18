@@ -92,6 +92,8 @@
 }
 
 - (void)answerCall:(VSLCall *)call completion:(void (^)(NSError *error))completion {
+    CXAction *answerCallAction = [[CXAnswerCallAction alloc] initWithCallUUID:call.uuid];
+    [self requestCallKitAction:answerCallAction completion:completion];
     [call answerWithCompletion:completion];
 }
 

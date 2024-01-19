@@ -6,6 +6,7 @@
 
 #import <Foundation/Foundation.h>
 #import "VSLAudioController.h"
+#import "CallKit/CXCallController.h"
 
 @class VSLCall;
 @class VSLAccount;
@@ -25,6 +26,11 @@
  *  Controler responsible for managing the audio streams for the calls.
  */
 @property (readonly) VSLAudioController * _Nonnull audioController;
+
+/**
+ *  A reference to CXCallController instance in user by VSLCallManager, used to force a CallKit event by successors
+ */
+@property (readonly) CXCallController * _Nonnull callController;
 
 /**
  *  Start a call to the given number for the given account.

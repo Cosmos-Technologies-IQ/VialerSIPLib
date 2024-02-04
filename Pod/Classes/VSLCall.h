@@ -352,7 +352,7 @@ typedef NS_ENUM(NSInteger, VSLCallTerminateReason) {
  *  Ranges from 1 to 4.4 (slighty different than on wiki). Translates to:
  *
  *  MOS     Quality     Impairment
- *  5       Excellent	Imperceptible
+ *  5       Excellent    Imperceptible
  *  4       Good        Perceptible but not annoying
  *  3       Fair        Slightly annoying
  *  2       Poor        Annoying
@@ -430,7 +430,7 @@ typedef NS_ENUM(NSInteger, VSLCallTerminateReason) {
  *
  *  @return VSLCall instance.
  */
-- (instancetype _Nullable)initOutboundCallWithNumberToCall:(NSString * _Nonnull)number account:(VSLAccount * _Nonnull)account;
+- (instancetype _Nullable)initOutboundCallWithNumberToCall:(NSString * _Nonnull)number account:(VSLAccount * _Nonnull)account callUUID:(NSUUID *_Nullable)callUUID;
 
 /**
  *  This will change the callState of the call.

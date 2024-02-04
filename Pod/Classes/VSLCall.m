@@ -72,9 +72,9 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
 
 #pragma mark - Life Cycle
 
-- (instancetype)initPrivateWithAccount:(VSLAccount *)account {
+- (instancetype)initPrivateWithAccount:(VSLAccount *)account callUUID:(NSUUID *)callUUID {
     if (self = [super init]) {
-        self.uuid = [[NSUUID alloc] init];
+        self.uuid = callUUID ?: [[NSUUID alloc] init];
         self.account = account;
         self.lastSeenConnectDuration = 0;
     }
@@ -82,7 +82,7 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
 }
 
 - (instancetype)initInboundCallWithCallId:(NSUInteger)callId account:(VSLAccount *)account {
-    if (self = [self initPrivateWithAccount:account]) {
+    if (self = [self initPrivateWithAccount:account callUUID: nil]) {
         self.callId = callId;
 
         pjsua_call_info callInfo;
@@ -103,8 +103,8 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
     return self;
 }
 
-- (instancetype)initOutboundCallWithNumberToCall:(NSString *)number account:(VSLAccount *)account {
-    if (self = [self initPrivateWithAccount:account]) {
+- (instancetype)initOutboundCallWithNumberToCall:(NSString *)number account:(VSLAccount *)account callUUID:(NSUUID *)callUUID {
+    if (self = [self initPrivateWithAccount:account callUUID: callUUID]) {
         self.numberToCall = [VialerUtils cleanPhoneNumber:number];
         self.lastSeenConnectDuration = 0;
     }

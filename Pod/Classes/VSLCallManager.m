@@ -66,7 +66,7 @@
                 VSLBlockSafeRun(completion, nil, error);
             });
         } else {
-            VSLCall *call = [[VSLCall alloc] initOutboundCallWithNumberToCall:number account:account];
+            VSLCall *call = [[VSLCall alloc] initOutboundCallWithNumberToCall:number account:account callUUID:nil];
             [self addCall:call];
 
             CXHandle *numberHandle = [[CXHandle alloc] initWithType:CXHandleTypePhoneNumber value:call.numberToCall];

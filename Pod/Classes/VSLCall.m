@@ -49,7 +49,7 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
 @property (nonatomic) BOOL connected;
 @property (nonatomic) BOOL userDidHangUp;
 @property (readwrite, nonatomic) BOOL isMerged;
-@property (readwrite, nonatomic) NSInteger *mergedWithUUID;
+@property (readwrite, nonatomic) NSUUID *mergedWithUUID;
 @property (strong, nonatomic) AVAudioPlayer *disconnectedSoundPlayer;
 @property (readwrite, nonatomic) VSLCallTransferState transferStatus;
 //@property (readwrite, nonatomic) NSTimeInterval lastSeenConnectDuration;
@@ -361,7 +361,11 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
                     pjsua_conf_adjust_tx_level(0, 5.0);
                     pjsua_conf_disconnect(callInfo.conf_slot, call2Info.conf_slot);
                     pjsua_conf_disconnect(call2Info.conf_slot, callInfo.conf_slot);
-
+                    
+                    self.isMerged = false;
+                    self.mergedWithUUID = nil;
+                    secondCall.isMerged = false;
+                    secondCall.mergedWithUUID = nil;
                 }else{
                     return NO;
                 }
@@ -373,9 +377,6 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
 }
 
 
-
-
-/*
 - (BOOL)mergeToCall:(VSLCall *)secondCall {
     
     if (self.callState != VSLCallStateConfirmed || secondCall.callState != VSLCallStateConfirmed) {
@@ -423,9 +424,8 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
 //      });
     return YES;
 }
- 
- */
 
+/*
 - (BOOL)mergeToCall:(VSLCall *)secondCall {
     
     if (self.callState != VSLCallStateConfirmed || secondCall.callState != VSLCallStateConfirmed) {
@@ -448,6 +448,7 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
 //      });
     return YES;
 }
+*/
 
 - (BOOL)transferToCall:(VSLCall *)secondCall {
     NSError *error;

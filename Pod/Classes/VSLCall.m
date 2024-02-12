@@ -932,6 +932,8 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
     pj_status_t status;
 
     if (onHold) {
+        status = pjsua_call_set_hold((pjsua_call_id)self.callId, NULL);
+    } else {
         pjsua_call_setting callSetting;
         pjsua_call_setting_default(&callSetting);
         callSetting.flag = PJSUA_CALL_UNHOLD;
@@ -941,8 +943,6 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
         }
         NSLog(@"Audio Session Reinvite issued");
         status = pjsua_call_reinvite2((pjsua_call_id)self.callId, &callSetting, NULL);
-    } else {
-        status = pjsua_call_set_hold((pjsua_call_id)self.callId, NULL);
     }
     
     if (status == PJ_SUCCESS) {

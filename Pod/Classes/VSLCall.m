@@ -820,6 +820,53 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
     return YES;
 }
 
+- (BOOL)setMuted:(BOOL)muted error:(NSError * _Nullable * _Nullable)error {
+    if (self.callState != VSLCallStateConfirmed) {
+        return YES;
+    }
+    
+    if (self.muted == muted) {
+        return YES;
+    }
+
+    pjsua_call_info callInfo;
+    pjsua_call_get_info((pjsua_call_id)self.callId, &callInfo);
+
+    if (callInfo.conf_slot <= 0) {
+        if (error != NULL) {
+            NSDictionary *userInfo = @{NSLocalizedDescriptionKey:NSLocalizedString(@"Could not toggle mute call", nil)};
+            *error = [NSError errorWithDomain:VSLCallErrorDomain code:VSLCallErrorCannotToggleMute userInfo:userInfo];
+        }
+        VSLLogError(@"Unable to toggle mute, pjsua has not provided a valid conf_slot for this call");
+        return NO;
+    }
+
+    pj_status_t status;
+    if (!muted) {
+        status = pjsua_conf_disconnect(0, callInfo.conf_slot);
+    } else {
+        status = pjsua_conf_connect(0, callInfo.conf_slot);
+    }
+
+    if (status == PJ_SUCCESS) {
+        self.muted = muted;
+        VSLLogVerbose(self.muted ? @"Microphone muted" : @"Microphone unmuted");
+    } else {
+        char statusmsg[PJ_ERR_MSG_SIZE];
+        pj_strerror(status, statusmsg, sizeof(statusmsg));
+        VSLLogError(@"Error toggling microphone mute in call %@, status: %s", self.uuid.UUIDString, statusmsg);
+
+        if (error != NULL) {
+            NSDictionary *userInfo = @{NSLocalizedDescriptionKey:NSLocalizedString(@"Could not toggle mute call", nil),
+                                       NSLocalizedFailureReasonErrorKey:[NSString stringWithFormat:NSLocalizedString(@"PJSIP status code: %d", nil), status]
+                                       };
+            *error = [NSError errorWithDomain:VSLCallErrorDomain code:VSLCallErrorCannotToggleMute userInfo:userInfo];
+        }
+        return NO;
+    }
+    return YES;
+}
+
 - (BOOL)toggleMute:(NSError **)error {
     if (self.callState != VSLCallStateConfirmed) {
         return YES;
@@ -869,6 +916,54 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
     }else{
         _isMerged = YES;
     }
+    return YES;
+}
+
+- (BOOL)setHold:(BOOL)onHold error:(NSError **)error {
+    if (self.callState != VSLCallStateConfirmed) {
+        NSLog(@"Returning Yes for hold state prematurely");
+        return YES;
+    }
+    
+    if (self.onHold == onHold) {
+        return YES;
+    }
+    
+    pj_status_t status;
+
+    if (onHold) {
+        pjsua_call_setting callSetting;
+        pjsua_call_setting_default(&callSetting);
+        callSetting.flag = PJSUA_CALL_UNHOLD;
+
+        if ([VSLEndpoint sharedEndpoint].endpointConfiguration.disableVideoSupport) {
+            callSetting.vid_cnt = 0;
+        }
+        NSLog(@"Audio Session Reinvite issued");
+        status = pjsua_call_reinvite2((pjsua_call_id)self.callId, &callSetting, NULL);
+    } else {
+        status = pjsua_call_set_hold((pjsua_call_id)self.callId, NULL);
+    }
+    
+    if (status == PJ_SUCCESS) {
+        self.onHold = onHold;
+        NSLog(onHold ? @"Call is on hold" : @"On hold state ended");
+    } else {
+        char statusmsg[PJ_ERR_MSG_SIZE];
+        pj_strerror(status, statusmsg, sizeof(statusmsg));
+        NSString *statusString = [NSString stringWithUTF8String:statusmsg];
+        NSLog(@"Error toggle holding in call %@, status: %@", self.uuid.UUIDString, statusString);
+
+        if (error != NULL) {
+            NSDictionary *userInfo = @{NSLocalizedDescriptionKey: NSLocalizedString(@"Could not toggle onhold call", nil),
+                                       NSLocalizedFailureReasonErrorKey: [NSString stringWithFormat:NSLocalizedString(@"PJSIP status code: %d", nil), status]
+                                       };
+            *error = [NSError errorWithDomain:VSLCallErrorDomain code:VSLCallErrorCannotToggleHold userInfo:userInfo];
+        }
+        NSLog(@"Returning No for hold state %d", self.onHold ? 1 : 0);
+        return NO;
+    }
+    NSLog(@"Returning Yes for hold state %d", self.onHold ? 1 : 0);
     return YES;
 }
 

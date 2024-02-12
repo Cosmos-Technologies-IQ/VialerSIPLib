@@ -480,6 +480,7 @@ typedef NS_ENUM(NSInteger, VSLCallTerminateReason) {
  */
 - (BOOL)toggleMute:(NSError * _Nullable * _Nullable)error;
 
+- (BOOL)setMuted:(BOOL)muted error:(NSError * _Nullable * _Nullable)error;
 /**
  *  This will answer the incoming call.
  *
@@ -498,6 +499,8 @@ typedef NS_ENUM(NSInteger, VSLCallTerminateReason) {
  *  @param error Pointer to an NSError pointer. Will be set to a NSError instance if cannot put call on hold.
  */
 - (BOOL)toggleHold:(NSError * _Nullable * _Nullable)error;
+
+- (BOOL)setHold:(BOOL)onHold error:(NSError * _Nullable * _Nullable)error;
 
 /**
  *  Send DTMF tone for this call with a character.
@@ -534,6 +537,14 @@ typedef NS_ENUM(NSInteger, VSLCallTerminateReason) {
  */
 - (BOOL)mergeToCall:(VSLCall * _Nonnull)secondCall;
 
+/**
+ *  Merge  the calsl audio streams for 3-Way calling..
+ *
+ *  @param secondCall VSLCall this call should be merge in to.
+ *
+ *  @return BOOL success of the call transfer.
+ */
+- (BOOL)ummergeToCall:(VSLCall * _Nonnull)secondCall;
 
 /**
  *  This will change the transferStatus of the call.

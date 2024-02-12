@@ -820,7 +820,7 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
     return YES;
 }
 
-- (BOOL)setMuted:(BOOL)muted error:(NSError * _Nullable * _Nullable)error {
+- (BOOL)setMuted:(BOOL)muted error:(NSError **)error {
     if (self.callState != VSLCallStateConfirmed) {
         return YES;
     }
@@ -842,7 +842,7 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
     }
 
     pj_status_t status;
-    if (!muted) {
+    if (muted) {
         status = pjsua_conf_disconnect(0, callInfo.conf_slot);
     } else {
         status = pjsua_conf_connect(0, callInfo.conf_slot);
@@ -850,15 +850,15 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
 
     if (status == PJ_SUCCESS) {
         self.muted = muted;
-        VSLLogVerbose(self.muted ? @"Microphone muted" : @"Microphone unmuted");
+        VSLLogVerbose(muted ? @"Microphone muted": @"Microphone unmuted");
     } else {
         char statusmsg[PJ_ERR_MSG_SIZE];
         pj_strerror(status, statusmsg, sizeof(statusmsg));
-        VSLLogError(@"Error toggling microphone mute in call %@, status: %s", self.uuid.UUIDString, statusmsg);
+        VSLLogError(@"Error toggle muting microphone in call %@, status: %s", self.uuid.UUIDString, statusmsg);
 
         if (error != NULL) {
             NSDictionary *userInfo = @{NSLocalizedDescriptionKey:NSLocalizedString(@"Could not toggle mute call", nil),
-                                       NSLocalizedFailureReasonErrorKey:[NSString stringWithFormat:NSLocalizedString(@"PJSIP status code: %d", nil), status]
+                                       NSLocalizedFailureReasonErrorKey:[NSString stringWithFormat:NSLocalizedString(@"PJSIP status code: %d", status)]
                                        };
             *error = [NSError errorWithDomain:VSLCallErrorDomain code:VSLCallErrorCannotToggleMute userInfo:userInfo];
         }

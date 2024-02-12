@@ -321,7 +321,7 @@ typedef NS_ENUM(NSInteger, VSLCallTerminateReason) {
 
 - (BOOL)toggleMerge:(NSError * _Nullable * _Nullable)error;
 
-@property (readonly, nonatomic) NSUUID * _Nullable mergedWithUUID;
+@property (readonly, nonatomic) NSInteger * _Nullable mergedWithCallID;
 
 @property (readonly) BOOL connected;
 

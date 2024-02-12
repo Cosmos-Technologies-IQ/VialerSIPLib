@@ -49,7 +49,7 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
 @property (nonatomic) BOOL connected;
 @property (nonatomic) BOOL userDidHangUp;
 @property (readwrite, nonatomic) BOOL isMerged;
-@property (readwrite, nonatomic) NSUUID *mergedWithUUID;
+@property (readwrite, nonatomic) NSInteger *mergedWithCallID;
 @property (strong, nonatomic) AVAudioPlayer *disconnectedSoundPlayer;
 @property (readwrite, nonatomic) VSLCallTransferState transferStatus;
 //@property (readwrite, nonatomic) NSTimeInterval lastSeenConnectDuration;
@@ -363,9 +363,9 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
                     pjsua_conf_disconnect(call2Info.conf_slot, callInfo.conf_slot);
                     
                     self.isMerged = false;
-                    self.mergedWithUUID = nil;
+                    self.mergedWithCallID = nil;
                     secondCall.isMerged = false;
-                    secondCall.mergedWithUUID = nil;
+                    secondCall.mergedWithCallID = nil;
                 }else{
                     return NO;
                 }
@@ -376,7 +376,7 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
     return YES;
 }
 
-
+/*
 - (BOOL)mergeToCall:(VSLCall *)secondCall {
     
     if (self.callState != VSLCallStateConfirmed || secondCall.callState != VSLCallStateConfirmed) {
@@ -424,8 +424,8 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
 //      });
     return YES;
 }
+*/
 
-/*
 - (BOOL)mergeToCall:(VSLCall *)secondCall {
     
     if (self.callState != VSLCallStateConfirmed || secondCall.callState != VSLCallStateConfirmed) {
@@ -433,9 +433,9 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
     }
     
                     self.isMerged = true;
-                    self.mergedWithUUID = secondCall.callId;
+                    self.mergedWithCallID = secondCall.callId;
                     secondCall.isMerged = true;
-                    secondCall.mergedWithUUID = self.callId;
+                    secondCall.mergedWithCallID = self.callId;
                     NSLog(@"Merge States : %u %u", self.isMerged, secondCall.isMerged);
                     VSLLogInfo(@"Merge States : %u %u", self.isMerged, secondCall.isMerged);
 //
@@ -448,7 +448,6 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
 //      });
     return YES;
 }
-*/
 
 - (BOOL)transferToCall:(VSLCall *)secondCall {
     NSError *error;
@@ -628,14 +627,14 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
         if (!self.muted) {
             pjsua_conf_connect(0, callInfo.conf_slot);
         }
-        if (self.isMerged && self.mergedWithUUID != nil){
-            VSLLogInfo(@"Merge Audio streams in mediaStateChanged triggered call1: %ld call2: %u", (long)self.callId, self.mergedWithUUID);
+        if (self.isMerged && self.mergedWithCallID != nil){
+            VSLLogInfo(@"Merge Audio streams in mediaStateChanged triggered call1: %ld call2: %u", (long)self.callId, self.mergedWithCallID);
             
             pjsua_call_info callInfo;
             pjsua_call_get_info((pjsua_call_id)self.callId, &callInfo);
             
             pjsua_call_info call2Info;
-            pjsua_call_get_info((pjsua_call_id)self.mergedWithUUID, &call2Info);
+            pjsua_call_get_info((pjsua_call_id)self.mergedWithCallID, &call2Info);
             
             pjsua_conf_connect(callInfo.conf_slot, call2Info.conf_slot);
 
@@ -643,7 +642,7 @@ NSString * const VSLCallErrorDuringSetupCallNotification = @"VSLCallErrorDuringS
             pjsua_call_media_status slotTwo = call2Info.media_status;
             NSLog(@"Ports %d %d" , callInfo.conf_slot, call2Info.conf_slot);
             //Active Media status
-            if ((slotTwo == PJSUA_CALL_MEDIA_ACTIVE || slotTwo == PJSUA_CALL_MEDIA_REMOTE_HOLD) && (slotOne == PJSUA_CALL_MEDIA_ACTIVE || slotOne == PJSUA_CALL_MEDIA_REMOTE_HOLD)){
+            if ((slotTwo == PJSUA_CALL_MEDIA_ACTIVE || slotTwo == PJSUA_CALL_MEDIA_REMOTE_HOLD || slotTwo == PJSUA_CALL_MEDIA_LOCAL_HOLD) && (slotOne == PJSUA_CALL_MEDIA_ACTIVE || slotOne == PJSUA_CALL_MEDIA_REMOTE_HOLD || slotOne == PJSUA_CALL_MEDIA_LOCAL_HOLD)){
                 pjsua_conf_connect(callInfo.conf_slot, 0);
                 pjsua_conf_connect(0, callInfo.conf_slot);
                 
